@@ -8,7 +8,7 @@ In this analysis we consider the damage cost, amount of deaths and injuries caus
 
 Here we load the libraries used throughout the analysis.
 
-```{r cache=TRUE}
+```{r loading-libs, cache=TRUE}
 library(plyr)
 library(ggplot2)
 ```
@@ -17,10 +17,10 @@ library(ggplot2)
 
 The data is taken from the [U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). The data contains events recorded from 1950 to 2011. Our first step is to load the data to be used from the BZIP file provided. Here we load the data right from the BZIP file, loading only the columns we actually care about.
 
-```{r cache=TRUE}
+```{r loading-all-data, cache=TRUE}
 zip <- bzfile("repdata-data-StormData.csv.bz2")
-data <- read.csv(zip, 
-                 strip.white=TRUE, 
+data <- read.csv(zip,
+                 strip.white=TRUE,
                  colClasses=c("NULL","character","NULL","NULL","numeric","character","character","character", "NULL",
 "NULL","NULL","character","NULL","NULL","NULL","NULL", "NULL","NULL","NULL","NULL","NULL","NULL","numeric","numeric",
 "numeric","character", "numeric","character","NULL","NULL","NULL","NULL","NULL","NULL","NULL", "NULL","NULL"))
@@ -28,14 +28,14 @@ data <- read.csv(zip,
 
 After that, we normalize the `EVTYPE` column because not all values are cleaned up of leading and trailing whitespace or in uppercase.
 
-```{r cache=TRUE}
+```{r normalizing-data, cache=TRUE}
 normalizeEvent <- function (x) toupper(gsub("^\\s+|\\s+$", "", x))
 data$EVTYPE <- normalizeEvent(data$EVTYPE)
 ```
 
-While evaluating the dataset, it's visible that some of the event types are duplicate with different names, so the `replacements.csv` file was created to map the event types to make sure we are correctly counting and summing the data for the events. Building this file is, unfortunately, a manual process, since we have to compare the event types and account for typos and names that are almost the same like mapping *FLASH FLOOODING* to *FLASH FLOOD*.
+While evaluating the dataset, it's visible that some of the event types are duplicate with different names, so the [replacements.csv](https://github.com/mauricio/reproductible-research-assignment-2/blob/master/replacements.csv) file was created to map the event types to make sure we are correctly counting and summing the data for the events. Building this file is, unfortunately, a manual process, since we have to compare the event types and account for typos and names that are almost the same like mapping *FLASH FLOOODING* to *FLASH FLOOD*.
 
-```{r cache=TRUE}
+```{r replacing-events, cache=TRUE}
 replacements <- read.csv("replacements.csv", stringsAsFactors=FALSE)
 
 eventFor <- function( evtype ) {
@@ -48,24 +48,30 @@ What we did for this was generate a file with all event types and then manually 
 
 Once the data is fully normalized we set the `date` field and the `year` field since we will use them for plots, means and summaries of the data.
 
-```{r cache=TRUE}
+```{r setting-dates, cache=TRUE}
 data$date <- as.Date(data$BGN_DATE, "%m/%d/%Y")
 data$year <- as.POSIXlt(data$date)$year+1900
 ```
 
 The property and crop damage fields have a separate field to indicate it's magnitude, `PROPDMGEXP` for property damage and `CROPDMGEXP` and we have to use them to calculate the actual values for damage. First, we have to normalize them to all uppercase values and then we will setup their multipliers correctly.
 
-```{r cache=TRUE}
+```{r normalizing-damage, cache=TRUE}
 data$PROPDMGEXP <- toupper(data$PROPDMGEXP)
 data$CROPDMGEXP <- toupper(data$CROPDMGEXP)
 unique(data$PROPDMGEXP)
 unique(data$CROPDMGEXP)
 ```
 
-As you can see, these values are not only the `K`, `M` and `B` that are shown at the documentation, which probably means whoever entered the information wasn't really paying much attention. Due to this, we have to build our own multiplier mapping to generate the actual value to be used. This table was manually built and saved as the `multipliers.csv` file we will load and calculate the values below:
+As you can see, these values are not only the `K`, `M` and `B` that are shown at the documentation, which probably means whoever entered the information wasn't really paying much attention. Due to this, we have to build our own multiplier mapping to generate the actual value to be used.
 
-```{r cache=TRUE}
+```{r showing-multipliers, cache=TRUE}
 multipliers <- read.csv("multipliers.csv", colClasses=c("character", "numeric"))
+print(multipliers)
+```
+
+This table was manually built and saved as the `multipliers.csv` file we will load and calculate the values below:
+
+```{r multiplying-data, cache=TRUE}
 mapDamage <- function(damage, mapping) {
   damage * multipliers[multipliers$key == mapping,]$number
 }
@@ -78,10 +84,10 @@ data$total_damage <- data$property_damage + data$crop_damage
 
 Since the data goes back a long time, it's important to evaluate the quality and diversity of the data we have throughout the years, one way to do this is to count how many different events we had every year:
 
-```{r cache=TRUE}
+```{r showing-years-with-events, cache=TRUE}
 ddply(
-  data, 
-  .(year), 
+  data,
+  .(year),
   summarise,
   count=length(unique(event))
   )
@@ -89,13 +95,13 @@ ddply(
 
 Before 1993 the only event types that we had records were:
 
-```{r}
+```{r years-before, cache=TRUE}
 unique(data[data$year <= 1992,]$event)
 ```
 
 And with this in mind, it's better to ignore these years and only work on data from 1993 and onwards since it contains many more items for us to consider.
 
-```{r cache=TRUE}
+```{r filtering-data, cache=TRUE}
 filteredData <- data[data$year >= 1993,]
 ```
 
@@ -107,10 +113,10 @@ When considering health consequences, we have two different variables to conside
 
 Let's start by building the organized collection of health consequences by event:
 
-```{r cache=TRUE}
+```{r health-consequences, cache=TRUE}
 healthConsequences <- ddply(
-  filteredData, 
-  .(event), 
+  filteredData,
+  .(event),
   summarise,
   total_deaths=sum(FATALITIES),
   total_injuries=sum(INJURIES)
@@ -119,7 +125,7 @@ healthConsequences <- ddply(
 
 Now let's find the top even types for both deaths and injuries:
 
-```{r cache=TRUE}
+```{r top-health-events, cache=TRUE}
 mostDeadly <- healthConsequences[with(healthConsequences, order(-total_deaths)),]
 head(mostDeadly)
 mostDeadlyEvents <- head(mostDeadly)$event
@@ -131,10 +137,10 @@ mostInjuriesEvents <- head(mostInjuries)$event
 
 Now let's look at how the deaths are spread over the period we have:
 
-```{r cache=TRUE}
+```{r deaths-by-year, cache=TRUE}
 healthConsequencesByYear <- ddply(
-  filteredData, 
-  .(year, event), 
+  filteredData,
+  .(year, event),
   summarise,
   total_deaths=sum(FATALITIES),
   total_injuries=sum(INJURIES)
@@ -145,25 +151,25 @@ qplot(year, total_deaths, data = healthConsequencesByYear[healthConsequencesByYe
 
 And plotting injuries over time:
 
-```{r cache=TRUE}
+```{r injuries-by-year, cache=TRUE}
 qplot(year, total_injuries, data = healthConsequencesByYear[healthConsequencesByYear$event %in% mostInjuriesEvents,], facets = event ~ ., geom="line", color=event, ylab="Injuries", xlab="Year")
 ```
 
 Since we saw both in separate terms, let's look at the intersection of the two top sets to see how much they look alike:
 
-```{r}
+```{r intersecting-health, cache=TRUE}
 intersect(mostDeadlyEvents, mostInjuriesEvents)
 ```
 
 And the ones that are different among both sets:
 
-```{r}
+```{r diff-health, cache=TRUE}
 setdiff(mostDeadlyEvents, mostInjuriesEvents)
 ```
 
 With this we can see that, joining the two sets, we end up with the following items as the top health problems caused by natural disasters:
 
-```{r}
+```{r union-health,cache=TRUE}
 union(mostDeadlyEvents, mostInjuriesEvents)
 ```
 
@@ -173,10 +179,10 @@ So these should be events with most investment since they are the ones causing m
 
 To find the biggest economic costs, we need to build a new dataset around the events and their total costs:
 
-```{r cache=TRUE}
+```{r economic-consequences, cache=TRUE}
 economicConsequences <- ddply(
-  filteredData, 
-  .(event), 
+  filteredData,
+  .(event),
   summarise,
   total_damage=sum(total_damage)/1000000000
   )
@@ -185,7 +191,7 @@ economicConsequences <- economicConsequences[with(economicConsequences, order(-t
 
 With this in hand, let's look a the top 6 events in our dataset:
 
-```{r}
+```{r top-economic-consequences, cache=TRUE}
 head(economicConsequences)
 ```
 
@@ -193,11 +199,11 @@ So, since 1993, these are the most expensive natural disasters we have (the cost
 
 Now let's look at how these costs for the top events are distributed over the years:
 
-```{r cache=TRUE}
+```{r plotting-economic-consequences, cache=TRUE}
 topEconomicEvents <- head(economicConsequences)$event
 economicConsequencesByYear <- ddply(
-  filteredData[filteredData$event %in% topEconomicEvents,], 
-  .(year,event), 
+  filteredData[filteredData$event %in% topEconomicEvents,],
+  .(year,event),
   summarise,
   total_damage=sum(total_damage)/1000000000
   )
@@ -210,7 +216,7 @@ And with this information we should be able to see that floods are the most expe
 
 As you might have noticed, we do have events repeated between the health issues and economic costs, they are:
 
-```{r}
+```{r intersection-of-all}
 intersect(union(mostDeadlyEvents, mostInjuriesEvents), topEconomicEvents)
 ```
 
